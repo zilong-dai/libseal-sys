@@ -1,46 +1,30 @@
 extern crate cc;
 
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{read_dir, File},
     io::{Read, Write},
     path::{Path, PathBuf},
 };
 
-fn config(config_file: &str, source_dir: &str, target_dir: &str) {
-    // let config_file = "config.h";
-    let source_dir = Path::new(source_dir);
-    let target_dir = Path::new(target_dir);
+fn config(source_path: &Path, destination_path: &Path) {
+    let mut source = File::open(source_path).expect("config file not found");
+    let mut destination = File::create(destination_path).expect("config file create failed");
 
-    println!("config file: {}", config_file);
-    println!("source dir: {}", source_dir.display());
-    println!("target dir: {}", target_dir.display());
-
-    if !target_dir.join(config_file).exists() {
-        let mut source_file = File::open(source_dir.join(config_file)).expect("open file failed");
-        let mut target_file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(target_dir.join(config_file))
-            .expect("create file failed");
-
-        let mut buffer = [0; 1024];
-        loop {
-            let bytes_read = source_file
-                .read(&mut buffer)
-                .expect("read config file failed");
-            if bytes_read == 0 {
-                break;
-            }
-            target_file
-                .write_all(&buffer[0..bytes_read])
-                .expect("write config file failed");
+    let mut buffer = [0; 1024];
+    loop {
+        let read_count = source.read(&mut buffer).expect("read config file error");
+        if read_count == 0 {
+            break;
         }
+        destination
+            .write_all(&buffer[..read_count])
+            .expect("write config file failed");
     }
 }
 
 fn get_files(path: &str, extensions: &[&str]) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    for entry in fs::read_dir(path).expect("Unable to read directory") {
+    for entry in read_dir(path).expect("Unable to read directory") {
         let entry = entry.expect("Unable to read directory entry");
         let path = entry.path();
         for extension in extensions.iter() {
@@ -57,11 +41,15 @@ fn main() {
     const SOURCE_EXTENSIONS: [&str; 2] = ["cpp", "c"];
     const BASE_PATH: &str = "SEAL/native/src";
 
-    const CONFIG_PATH: &str = "config";
-    const UTIL_PATH: &str = "SEAL/native/src/seal/util";
-    const CONFIG_H: &str = "config.h";
+    #[cfg(feature = "cpp17")]
+    const CONFIG_SOURCE: &str = "config/config-stdc++17.h";
 
-    config(CONFIG_H, CONFIG_PATH, UTIL_PATH);
+    #[cfg(not(feature = "cpp17"))]
+    const CONFIG_SOURCE: &str = "config/config.h";
+
+    const CONFIG_H: &str = "SEAL/native/src/seal/util/config.h";
+
+    config(Path::new(CONFIG_SOURCE), Path::new(CONFIG_H));
 
     let mut base_config = cc::Build::new();
 
@@ -71,12 +59,17 @@ fn main() {
         &SOURCE_EXTENSIONS,
     );
 
+    #[cfg(feature = "cpp17")]
+    base_config.flag("-std=c++17");
+
     base_config
         .cpp(true)
         .include(BASE_PATH)
         .files(seal_files)
         .files(util_files)
         .flag("-O3")
+        .flag("-Wno-all")
+        .flag("-Wno-extra")
         .compile("libseal.a");
 
     // bindgen::Builder::default()

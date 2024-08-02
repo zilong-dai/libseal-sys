@@ -11,3 +11,7 @@ edition = "2021"
 [build-dependencies]
 cc = "1"
 # bindgen = "0.69.4"
+
+[features]
+default = []
+cpp17 = []
